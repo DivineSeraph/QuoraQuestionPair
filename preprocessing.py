@@ -189,21 +189,23 @@ test_sequences_1 = tokenizer.texts_to_sequences(question1_validate)
 test_sequences_2 = tokenizer.texts_to_sequences(question2_validate)
 
 word_index = tokenizer.word_index
-print('Found %s unique tokens' % len(word_index))
+print('\nFound %s unique tokens' % len(word_index))
 
 data_1 = pad_sequences(sequences_1, maxlen=MAX_SEQUENCE_LENGTH)
 data_2 = pad_sequences(sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
 labels = np.array(isDuplicate_train)
-print('Shape of data tensor:', data_1.shape)
+print('\nShape of data tensor:', data_1.shape)
 print('Shape of label tensor:', labels.shape)
 
 test_data_1 = pad_sequences(test_sequences_1, maxlen=MAX_SEQUENCE_LENGTH)
 test_data_2 = pad_sequences(test_sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
 test_labels = np.array(isDuplicate_validate)
+print('\nShape of data tensor:', test_data_1.shape)
+print('Shape of label tensor:', test_labels.shape)
 ##########################################
 
 ######## Prepare word embeddings #########
-print('Indexing word vectors')
+print('\nIndexing word vectors')
 
 word2vec = KeyedVectors.load_word2vec_format(EMBEDDING_FILE, \
         binary=True)
