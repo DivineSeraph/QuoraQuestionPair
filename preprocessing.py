@@ -3,10 +3,15 @@
 ########################################
 import os
 import pandas as pd
+from tqdm import tqdm
+import numpy as np
 
 import re
 from string import punctuation
 from nltk.corpus import stopwords
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from gensim.models import KeyedVectors
 
 stop_words = ['the','a','an','and','but','if','or','because','as','what','which','this','that','these','those','then',
               'just','so','than','such','both','through','about','for','is','of','while','during','to','What','Which',
@@ -26,7 +31,10 @@ TEST_DATA_FILE = BASE_DIR + 'test.csv'
 ########################################
 
 train = pd.read_csv(TRAIN_DATA_FILE)
-test = pd.read_csv(TEST_DATA_FILE)
+MAX_WORDS = 200000
+MAX_SEQUENCE_LENGTH = 40
+EMBEDDING_DIM = 300
+#test = pd.read_csv(TEST_DATA_FILE)
 
 ##########   Functions   ###############
 
@@ -107,16 +115,16 @@ def text_to_wordlist(text, remove_stopwords=True):
 
 def clean_questions(question_list, questions, list_name, list_len):
     # Each question is cleaned using text_to_wordlist and append to a list
-    for question in questions:
+    for question in tqdm(questions):
 
         question_list.append(text_to_wordlist(question))
 
-        if(len(question_list) % 100000 == 0):
+        #if(len(question_list) % 100000 == 0):
             # Progress is reported every 100000 questions
-            cur_progress = (len(question_list)/list_len)*100
+         #   cur_progress = (len(question_list)/list_len)*100
 
-            print("{n} is {p}% complete".format(
-                n=list_name, p=round(cur_progress, 2)))
+          #  print("{n} is {p}% complete".format(
+           #     n=list_name, p=round(cur_progress, 2)))
 
 
 ########################################
@@ -127,31 +135,85 @@ print('Processing text dataset')
 #########   Noise removal   ############
 print('Null values in train.csv')
 print(train.isnull().sum())
-print('\nNull values in test.csv')
-print(test.isnull().sum())
+#print('\nNull values in test.csv')
+#print(test.isnull().sum())
 
 print('\nDropping null values\n')
 train = train.dropna()
-test = test.dropna()
+#test = test.dropna()
 
 print('Null values in train.csv')
 print(train.isnull().sum())
-print('\nNull values in test.csv')
-print(test.isnull().sum())
+#print('\nNull values in test.csv')
+#print(test.isnull().sum())
 
 print(train.head(5))
 print('\n')
+print('Cleaning question 1 coloumn:')
 train_question1 = []
 clean_questions(train_question1,train.question1, "Train: Question 1 List", len(train))
-
+train['question1'] = train_question1
+print('\n')
+print('Cleaning question 2 coloumn:')
 train_question2 = []
 clean_questions(train_question2,train.question2, "Train: Question 2 List",len(train))
+train['question2'] = train_question2
+print('\n')
+print(train.head(5))
 
+########################################
+train_size = int(len(train)* .8)
+print("\nTrain Size = %d" % train_size)
+print("\nTest size = %d" % (len(train)-train_size))
+question1_train = train['question1'].values[:train_size]
+question2_train = train['question2'].values[:train_size]
+isDuplicate_train = train['is_duplicate'].values[:train_size]
 
-for i in range(5):
-    print("{q1}\n{q2}".format(q1=train_question1[i],q2=train_question2[i]))
-    print('\n\n')
+question1_validate = train['question1'].values[train_size:]
+question2_validate = train['question2'].values[train_size:]
+isDuplicate_validate = train['is_duplicate'].values[train_size:]
 
+print(question1_train[:5])
+print('\n')
+print(question2_train[:5])
 ########################################
 
 ############ Tokenizer #################
+
+tokenizer = Tokenizer(num_words=MAX_WORDS)
+tokenizer.fit_on_texts(list(question1_train)+list(question2_train)+list(question1_validate)+list(question2_validate))
+
+sequences_1 = tokenizer.texts_to_sequences(question1_train)
+sequences_2 = tokenizer.texts_to_sequences(question2_train)
+test_sequences_1 = tokenizer.texts_to_sequences(question1_validate)
+test_sequences_2 = tokenizer.texts_to_sequences(question2_validate)
+
+word_index = tokenizer.word_index
+print('Found %s unique tokens' % len(word_index))
+
+data_1 = pad_sequences(sequences_1, maxlen=MAX_SEQUENCE_LENGTH)
+data_2 = pad_sequences(sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
+labels = np.array(isDuplicate_train)
+print('Shape of data tensor:', data_1.shape)
+print('Shape of label tensor:', labels.shape)
+
+test_data_1 = pad_sequences(test_sequences_1, maxlen=MAX_SEQUENCE_LENGTH)
+test_data_2 = pad_sequences(test_sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
+test_labels = np.array(isDuplicate_validate)
+##########################################
+
+######## Prepare word embeddings #########
+print('Indexing word vectors')
+
+word2vec = KeyedVectors.load_word2vec_format(EMBEDDING_FILE, \
+        binary=True)
+print('Found %s word vectors of word2vec' % len(word2vec.vocab))
+
+print("Preparing embedding Matrix")
+nb_words = min(MAX_WORDS, len(word_index))+1
+
+embedding_matrix = np.zeros((nb_words, EMBEDDING_DIM))
+for word, i in tqdm(word_index.items()):
+    if word in word2vec.vocab:
+        embedding_matrix[i] = word2vec.word_vec(word)
+print('Null word embeddings: %d' % np.sum(np.sum(embedding_matrix, axis=1) == 0))
