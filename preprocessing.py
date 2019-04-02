@@ -12,6 +12,10 @@ from nltk.corpus import stopwords
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from gensim.models import KeyedVectors
+from keras.layers import Input, Embedding, LSTM, Lambda
+import keras.backend as K
+from keras.models import Model
+import matplotlib.pyplot as plt
 
 stop_words = ['the','a','an','and','but','if','or','because','as','what','which','this','that','these','those','then',
               'just','so','than','such','both','through','about','for','is','of','while','during','to','What','Which',
@@ -219,3 +223,61 @@ for word, i in tqdm(word_index.items()):
     if word in word2vec.vocab:
         embedding_matrix[i] = word2vec.word_vec(word)
 print('Null word embeddings: %d' % np.sum(np.sum(embedding_matrix, axis=1) == 0))
+
+##########################################
+
+########## Model Building ################
+n_hidden = 50
+batch_size = 64
+n_epoch = 25
+
+def exponent_neg_manhattan_distance(left, right):
+    ''' Helper function for the similarity estimate of the LSTMs outputs'''
+    return K.exp(-K.sum(K.abs(left-right), axis=1, keepdims=True))
+
+# The visible layer
+left_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
+right_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
+
+embedding_layer = Embedding(len(embedding_matrix),EMBEDDING_DIM, weights = [embedding_matrix], input_length = MAX_SEQUENCE_LENGTH, trainable = False)
+
+# Embedded version of the inputs
+encoded_left = embedding_layer(left_input)
+encoded_right = embedding_layer(right_input)
+
+# Since this is a siamese network, both sides share the same LSTM
+shared_lstm = LSTM(n_hidden)
+
+left_output = shared_lstm(encoded_left)
+right_output = shared_lstm(encoded_right)
+
+# Calculates the distance as defined by the MaLSTM model
+malstm_distance = Lambda(function=lambda x: exponent_neg_manhattan_distance(x[0], x[1]),output_shape=lambda x: (x[0][0], 1))([left_output, right_output])
+
+# Pack it all up into a model
+malstm = Model([left_input, right_input], [malstm_distance])
+
+malstm.compile(loss='binary_crossentropy',
+        optimizer='nadam',
+        metrics=['acc'])
+
+malstm_trained = malstm.fit([data_1, data_2], labels, batch_size=batch_size, nb_epoch=n_epoch,
+                            validation_data=([test_data_1, test_data_2], test_labels))
+
+# Plot accuracy
+plt.plot(malstm_trained.history['acc'])
+plt.plot(malstm_trained.history['val_acc'])
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='upper left')
+plt.show()
+
+# Plot loss
+plt.plot(malstm_trained.history['loss'])
+plt.plot(malstm_trained.history['val_loss'])
+plt.title('Model Loss')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='upper right')
+plt.show()
