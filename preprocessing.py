@@ -15,6 +15,7 @@ from gensim.models import KeyedVectors
 from keras.layers import Input, Embedding, LSTM, Lambda
 import keras.backend as K
 from keras.models import Model
+from keras.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
 
 stop_words = ['the','a','an','and','but','if','or','because','as','what','which','this','that','these','those','then',
@@ -229,7 +230,7 @@ print('Null word embeddings: %d' % np.sum(np.sum(embedding_matrix, axis=1) == 0)
 ########## Model Building ################
 n_hidden = 50
 batch_size = 64
-n_epoch = 25
+n_epoch = 6
 
 def exponent_neg_manhattan_distance(left, right):
     ''' Helper function for the similarity estimate of the LSTMs outputs'''
@@ -257,12 +258,25 @@ malstm_distance = Lambda(function=lambda x: exponent_neg_manhattan_distance(x[0]
 # Pack it all up into a model
 malstm = Model([left_input, right_input], [malstm_distance])
 
+# load weights
+#malstm.load_weights("weights.best.hdf5")
+
+#compile model
 malstm.compile(loss='binary_crossentropy',
         optimizer='nadam',
         metrics=['acc'])
 
+# checkpoint for best weight
+#filepath="weights.best.hdf5"
+
+# checkpoint for each iteration
+filepath="data/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5"
+
+checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+callbacks_list = [checkpoint]
+
 malstm_trained = malstm.fit([data_1, data_2], labels, batch_size=batch_size, nb_epoch=n_epoch,
-                            validation_data=([test_data_1, test_data_2], test_labels))
+                            validation_data=([test_data_1, test_data_2], test_labels),callbacks=callbacks_list)
 
 # Plot accuracy
 plt.plot(malstm_trained.history['acc'])
@@ -281,3 +295,13 @@ plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend(['Train', 'Validation'], loc='upper right')
 plt.show()
+
+# serialize model to JSON
+#  the keras model which is trained is defined as 'model' in this example
+model_json = malstm.to_json()
+
+with open("model_num.json", "w") as json_file:
+    json_file.write(model_json)
+
+# serialize weights to HDF5
+#malstm_trained.save_weights("model_num.h5")
