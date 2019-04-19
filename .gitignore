@@ -4,4 +4,3 @@ LSTM.py
 .vscode
 tokenizer.pickle
 weights.best.hdf5
-embedding_weights.npy
