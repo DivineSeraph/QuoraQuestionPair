@@ -156,9 +156,17 @@ for word, i in tqdm(word_index.items()):
 print('Null word embeddings: %d' % np.sum(np.sum(embedding_matrix, axis=1) == 0))'''
 
 
+
+word_index = tokenizer.word_index
+print("Preparing embedding Matrix")
+nb_words = min(MAX_WORDS, len(word_index))+1
+
+embedding_matrix = np.zeros((nb_words, EMBEDDING_DIM))
+#########################################
+
 #np.save('embedding_weights',embedding_matrix)
 
-embedding_matrix = np.load('embedding_weights.npy')
+#embedding_matrix = np.load('embedding_weights.npy')
 #embedding_matrix.dump('embedding_weights.dat')
 ##########################################
 
