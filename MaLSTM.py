@@ -17,6 +17,7 @@ import keras.backend as K
 from keras.models import Model
 from keras.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
+import pickle
 
 stop_words = ['the','a','an','and','but','if','or','because','as','what','which','this','that','these','those','then',
               'just','so','than','such','both','through','about','for','is','of','while','during','to','What','Which',
@@ -207,6 +208,11 @@ test_data_2 = pad_sequences(test_sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
 test_labels = np.array(isDuplicate_validate)
 print('\nShape of data tensor:', test_data_1.shape)
 print('Shape of label tensor:', test_labels.shape)
+
+#saving the created tokenizer
+with open('tokenizer.pickle', 'wb') as handle:
+    pickle.dump(tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
+print('\nTokenizer saved in tokenizer.pickle')
 ##########################################
 
 ######## Prepare word embeddings #########
@@ -224,6 +230,8 @@ for word, i in tqdm(word_index.items()):
     if word in word2vec.vocab:
         embedding_matrix[i] = word2vec.word_vec(word)
 print('Null word embeddings: %d' % np.sum(np.sum(embedding_matrix, axis=1) == 0))
+
+#np.save('embedding_weights',embedding_matrix)
 
 ##########################################
 
