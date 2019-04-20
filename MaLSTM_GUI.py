@@ -107,112 +107,76 @@ def text_to_wordlist(text, remove_stopwords=True):
 
     return(text)
 
-question1 = input('Enter question 1: ')
-question2 = input('Enter question 2: ')
+def modelPredict(question1,question2):
+        question1 = text_to_wordlist(question1)
+        question2 = text_to_wordlist(question2)
+        question1 = [question1]
+        question2 = [question2]
+        tokenizer = Tokenizer(num_words=MAX_WORDS)
+        with open('tokenizer.pickle', 'rb') as handle:
+                tokenizer = pickle.load(handle)
 
-print('\nThe question pair entered is\n {0} \n {1}'.format(question1,question2))
+        sequences_1 = tokenizer.texts_to_sequences(question1)
+        sequences_2 = tokenizer.texts_to_sequences(question2)
+        data_1 = pad_sequences(sequences_1, maxlen=MAX_SEQUENCE_LENGTH)
+        data_2 = pad_sequences(sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
+        word_index = tokenizer.word_index
+        nb_words = min(MAX_WORDS, len(word_index))+1
+        embedding_matrix = np.zeros((nb_words, EMBEDDING_DIM))
+        ########## Model Building ################
+        n_hidden = 50
+        
+        def exponent_neg_manhattan_distance(left, right):
+                ''' Helper function for the similarity estimate of the LSTMs outputs'''
+                return K.exp(-K.sum(K.abs(left-right), axis=1, keepdims=True))
 
-question1 = text_to_wordlist(question1)
-question2 = text_to_wordlist(question2)
+        # The visible layer
+        left_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
+        right_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
 
-print('\nThe cleaned question pair entered is\n {0} \n {1}'.format(question1,question2))
+        embedding_layer = Embedding(len(embedding_matrix),EMBEDDING_DIM, weights = [embedding_matrix], input_length = MAX_SEQUENCE_LENGTH, trainable = False)
 
-question1 = [question1]
-question2 = [question2]
+        # Embedded version of the inputs
+        encoded_left = embedding_layer(left_input)
+        encoded_right = embedding_layer(right_input)
 
-print(question1)
-print(question2)
-#load tokenizer
-tokenizer = Tokenizer(num_words=MAX_WORDS)
-with open('tokenizer.pickle', 'rb') as handle:
-    tokenizer = pickle.load(handle)
+        # Since this is a siamese network, both sides share the same LSTM
+        shared_lstm = LSTM(n_hidden)
 
-sequences_1 = tokenizer.texts_to_sequences(question1)
-sequences_2 = tokenizer.texts_to_sequences(question2)
-data_1 = pad_sequences(sequences_1, maxlen=MAX_SEQUENCE_LENGTH)
-data_2 = pad_sequences(sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
+        left_output = shared_lstm(encoded_left)
+        right_output = shared_lstm(encoded_right)
 
-print(sequences_1) 
-print(sequences_2)
+        # Calculates the distance as defined by the MaLSTM model
+        malstm_distance = Lambda(function=lambda x: exponent_neg_manhattan_distance(x[0], x[1]),output_shape=lambda x: (x[0][0], 1))([left_output, right_output])
 
+        # Pack it all up into a model
+        malstm = Model([left_input, right_input], [malstm_distance])
 
-'''word_index = tokenizer.word_index
-print('\nFound %s unique tokens' % len(word_index))'''
+        # load weights
+        malstm.load_weights("weights.best.hdf5")
+        # load weights into new model
+        #loaded_model.load_weights("weights.best.h5")
+        
 
-######## Prepare word embeddings #########
-'''print('\nIndexing word vectors')
+        #print(malstm.summary())
+        output = malstm.predict([data_1,data_2])
 
-word2vec = KeyedVectors.load_word2vec_format(EMBEDDING_FILE, \
-        binary=True)
-print('Found %s word vectors of word2vec' % len(word2vec.vocab))
-
-print("Preparing embedding Matrix")
-nb_words = min(MAX_WORDS, len(word_index))+1
-
-embedding_matrix = np.zeros((nb_words, EMBEDDING_DIM))
-for word, i in tqdm(word_index.items()):
-    if word in word2vec.vocab:
-        embedding_matrix[i] = word2vec.word_vec(word)
-print('Null word embeddings: %d' % np.sum(np.sum(embedding_matrix, axis=1) == 0))'''
+        return(output[0][0]*100)
 
 
+################ Testing #####################
+#question1 = input('Enter question 1: ')
+#question2 = input('Enter question 2: ')
+#print(str(modelPredict(question1,question2)))
 
-word_index = tokenizer.word_index
-print("Preparing embedding Matrix")
-nb_words = min(MAX_WORDS, len(word_index))+1
-
-embedding_matrix = np.zeros((nb_words, EMBEDDING_DIM))
-#########################################
+##### Saving and loading embedding matrix #####
 
 #np.save('embedding_weights',embedding_matrix)
 
 #embedding_matrix = np.load('embedding_weights.npy')
 #embedding_matrix.dump('embedding_weights.dat')
-##########################################
 
-########## Model Building ################
-n_hidden = 50
-batch_size = 64
-n_epoch = 6
-
-def exponent_neg_manhattan_distance(left, right):
-    ''' Helper function for the similarity estimate of the LSTMs outputs'''
-    return K.exp(-K.sum(K.abs(left-right), axis=1, keepdims=True))
-
-# The visible layer
-left_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
-right_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
-
-embedding_layer = Embedding(len(embedding_matrix),EMBEDDING_DIM, weights = [embedding_matrix], input_length = MAX_SEQUENCE_LENGTH, trainable = False)
-
-# Embedded version of the inputs
-encoded_left = embedding_layer(left_input)
-encoded_right = embedding_layer(right_input)
-
-# Since this is a siamese network, both sides share the same LSTM
-shared_lstm = LSTM(n_hidden)
-
-left_output = shared_lstm(encoded_left)
-right_output = shared_lstm(encoded_right)
-
-# Calculates the distance as defined by the MaLSTM model
-malstm_distance = Lambda(function=lambda x: exponent_neg_manhattan_distance(x[0], x[1]),output_shape=lambda x: (x[0][0], 1))([left_output, right_output])
-
-# Pack it all up into a model
-malstm = Model([left_input, right_input], [malstm_distance])
-
-# load weights
-malstm.load_weights("weights.best.hdf5")
-# load weights into new model
-#loaded_model.load_weights("weights.best.h5")
-print("Loaded model from disk")
-
-#print(malstm.summary())
-output = malstm.predict([data_1,data_2])
-
-print('Percentage of similarity is ',output)
-
-print(output>0.5)
+###############################################
 
 
 
