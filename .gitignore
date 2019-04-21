@@ -4,3 +4,4 @@ LSTM.py
 .vscode
 tokenizer.pickle
 weights.best.hdf5
+__pycache__
